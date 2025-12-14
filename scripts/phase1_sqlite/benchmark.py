@@ -42,19 +42,19 @@ from queries import (
 # CONFIGURATION
 # ============================================================================
 
-DB_PATH = Path(__file__).parent.parent / "data" / "imdb.db"
+DB_PATH = Path(__file__).parent.parent.parent / "data" / "imdb.db"
 
-# Paramètres des requêtes
+# Paramètres des requêtes (les clés doivent correspondre aux noms des fonctions)
 QUERY_PARAMS = {
-    "actor_filmography": {"actor_name": "Tom Hanks"},
-    "top_n_films": {"genre": "Drama", "year_start": 2010, "year_end": 2024, "n": 10},
-    "multi_role_actors": {},
-    "collaborations": {"actor_name": "Steven Spielberg"},
-    "popular_genres": {"min_rating": 7.0, "min_count": 50},
-    "career_evolution": {"actor_name": "Meryl Streep"},
-    "top_films_per_genre": {"top_n": 5},
-    "breakthrough_careers": {"threshold_votes": 200000},
-    "most_prolific_directors": {"min_films": 10},
+    "query_actor_filmography": {"actor_name": "Tom Hanks"},
+    "query_top_n_films": {"genre": "Drama", "year_start": 2010, "year_end": 2024, "n": 10},
+    "query_multi_role_actors": {},
+    "query_collaborations": {"actor_name": "Steven Spielberg"},
+    "query_popular_genres": {"min_rating": 7.0, "min_count": 50},
+    "query_career_evolution": {"actor_name": "Meryl Streep"},
+    "query_top_films_per_genre": {"top_n": 5},
+    "query_breakthrough_careers": {"threshold_votes": 200000},
+    "query_most_prolific_directors": {"min_films": 10},
 }
 
 
