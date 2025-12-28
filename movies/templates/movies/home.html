@@ -1,0 +1,170 @@
+{% extends 'movies/base.html' %}
+
+{% block title %}CinéExplorer - Accueil{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-3">
+            <i class="bi bi-film text-primary"></i> Bienvenue sur CinéExplorer
+        </h1>
+        <p class="lead text-muted">
+            Plateforme de découverte de films - Phase 3: Intégration Multi-Bases
+        </p>
+    </div>
+</div>
+
+<!-- Status des bases de données -->
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-database text-primary"></i> SQLite</h5>
+                <span class="status-badge">
+                    <span class="status-dot {% if sqlite_connected %}online{% else %}offline{% endif %}"></span>
+                    {% if sqlite_connected %}Connecté{% else %}Déconnecté{% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                {% if sqlite_connected %}
+                <div class="row text-center">
+                    <div class="col-4">
+                        <div class="stat-value">{{ sqlite_stats.movies_count|default:0|floatformat:0 }}</div>
+                        <small class="text-muted">Films</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-value">{{ sqlite_stats.persons_count|default:0|floatformat:0 }}</div>
+                        <small class="text-muted">Personnes</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-value">{{ sqlite_stats.genres_count|default:0 }}</div>
+                        <small class="text-muted">Genres</small>
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-danger mb-0">
+                    <i class="bi bi-exclamation-triangle"></i> {{ sqlite_error|default:"Connexion impossible" }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-3">
+        <div class="card stat-card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-server text-success"></i> MongoDB Replica Set</h5>
+                <span class="status-badge">
+                    <span class="status-dot {% if mongo_connected %}online{% else %}offline{% endif %}"></span>
+                    {% if mongo_connected %}Connecté{% else %}Déconnecté{% endif %}
+                </span>
+            </div>
+            <div class="card-body">
+                {% if mongo_connected %}
+                <div class="row text-center mb-3">
+                    <div class="col-4">
+                        <div class="stat-value">{{ mongo_stats.movies_complete_count|default:0|floatformat:0 }}</div>
+                        <small class="text-muted">Films (complets)</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-value">{{ mongo_stats.data_size_mb|default:0 }}</div>
+                        <small class="text-muted">MB données</small>
+                    </div>
+                    <div class="col-4">
+                        <div class="stat-value">{{ replica_status.members|length|default:0 }}</div>
+                        <small class="text-muted">Nœuds</small>
+                    </div>
+                </div>
+                
+                <!-- Status du Replica Set -->
+                <div class="mt-3">
+                    <h6 class="text-muted mb-2">Status du Replica Set:</h6>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for member in replica_status.members %}
+                        <span class="badge {% if member.state == 'PRIMARY' %}bg-success{% elif member.state == 'SECONDARY' %}bg-info{% else %}bg-warning{% endif %}">
+                            {{ member.name }} - {{ member.state }}
+                        </span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="alert alert-danger mb-0">
+                    <i class="bi bi-exclamation-triangle"></i> {{ mongo_error|default:"Connexion impossible" }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Films -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-star-fill text-warning"></i> Top 10 Films les mieux notés</h5>
+            </div>
+            <div class="card-body">
+                {% if top_movies %}
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Titre</th>
+                                <th>Année</th>
+                                <th>Note</th>
+                                <th>Votes</th>
+                                <th>Genres</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for movie in top_movies %}
+                            <tr>
+                                <td><strong>{{ forloop.counter }}</strong></td>
+                                <td><strong>{{ movie.title }}</strong></td>
+                                <td>{{ movie.year|default:"-" }}</td>
+                                <td>
+                                    <span class="movie-rating">
+                                        <i class="bi bi-star-fill"></i>
+                                        {{ movie.rating.average|floatformat:1 }}
+                                    </span>
+                                </td>
+                                <td>{{ movie.rating.votes|floatformat:0 }}</td>
+                                <td>
+                                    {% for genre in movie.genres|slice:":3" %}
+                                    <span class="badge bg-secondary">{{ genre }}</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">
+                    <i class="bi bi-info-circle"></i> Aucun film disponible
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Informations Phase 3 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-body">
+                <h5 class="text-primary"><i class="bi bi-info-circle"></i> Phase 3 - T3.3: Préparation Django</h5>
+                <ul class="mb-0">
+                    <li><strong>SQLite Service:</strong> Requêtes relationnelles efficaces pour les listes et filtres</li>
+                    <li><strong>MongoDB Service:</strong> Documents pré-agrégés pour les détails complets (movies_complete)</li>
+                    <li><strong>Replica Set:</strong> 3 nœuds pour la haute disponibilité</li>
+                    <li><strong>API Test:</strong> <a href="{% url 'movies:api_test' %}" class="text-primary">/api/test/</a> pour vérifier les connexions</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
