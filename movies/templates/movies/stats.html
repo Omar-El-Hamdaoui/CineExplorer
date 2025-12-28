@@ -1,0 +1,247 @@
+{% extends 'movies/base.html' %}
+
+{% block title %}CinéExplorer - Statistiques{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-3">
+            <i class="bi bi-graph-up text-primary"></i> Statistiques
+        </h1>
+        <p class="lead text-muted">
+            Comparaison des données SQLite et MongoDB
+        </p>
+    </div>
+</div>
+
+<!-- Stats globales -->
+<div class="row mb-4">
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-database text-primary"></i> SQLite - Statistiques</h5>
+            </div>
+            <div class="card-body">
+                {% if sqlite_stats %}
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Films</span>
+                        <strong>{{ sqlite_stats.movies_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Personnes</span>
+                        <strong>{{ sqlite_stats.persons_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Réalisateurs</span>
+                        <strong>{{ sqlite_stats.directors_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Acteurs</span>
+                        <strong>{{ sqlite_stats.actors_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Genres</span>
+                        <strong>{{ sqlite_stats.genres_count }}</strong>
+                    </li>
+                </ul>
+                {% else %}
+                <p class="text-danger">{{ sqlite_error|default:"Erreur de connexion" }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-server text-success"></i> MongoDB - Statistiques</h5>
+            </div>
+            <div class="card-body">
+                {% if mongo_stats %}
+                <ul class="list-group list-group-flush">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Films (movies)</span>
+                        <strong>{{ mongo_stats.movies_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Films complets</span>
+                        <strong>{{ mongo_stats.movies_complete_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Personnes</span>
+                        <strong>{{ mongo_stats.persons_count|floatformat:0 }}</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Taille données</span>
+                        <strong>{{ mongo_stats.data_size_mb }} MB</strong>
+                    </li>
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Collections</span>
+                        <strong>{{ mongo_stats.collections_count }}</strong>
+                    </li>
+                </ul>
+                {% else %}
+                <p class="text-danger">{{ mongo_error|default:"Erreur de connexion" }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Graphiques -->
+<div class="row mb-4">
+    <!-- Films par genre -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-bar-chart text-primary"></i> Films par Genre (Top 10)</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="genresChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Films par décennie -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-clock-history text-primary"></i> Films par Décennie</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="decadesChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Top Acteurs et Réalisateurs -->
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-person-star text-warning"></i> Top 10 Acteurs (par films)</h5>
+            </div>
+            <div class="card-body">
+                {% if top_actors %}
+                <ol class="list-group list-group-numbered">
+                    {% for actor in top_actors %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ actor.name }}
+                        <span class="badge bg-primary rounded-pill">{{ actor.movie_count }} films</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-muted">Données non disponibles</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-camera-reels text-success"></i> Top 10 Réalisateurs (par films)</h5>
+            </div>
+            <div class="card-body">
+                {% if top_directors %}
+                <ol class="list-group list-group-numbered">
+                    {% for director in top_directors %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ director.name }}
+                        <span class="badge bg-success rounded-pill">{{ director.movie_count }} films</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-muted">Données non disponibles</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Données pour les graphiques
+const genresData = [
+    {% for genre in genres_stats %}
+    { label: "{{ genre.genre }}", value: {{ genre.count }} },
+    {% endfor %}
+];
+
+const decadesData = [
+    {% for decade in decades_stats %}
+    { label: "{{ decade.decade|floatformat:0 }}s", value: {{ decade.count }} },
+    {% endfor %}
+];
+
+// Graphique des genres
+if (genresData.length > 0) {
+    new Chart(document.getElementById('genresChart'), {
+        type: 'bar',
+        data: {
+            labels: genresData.slice(0, 10).map(d => d.label),
+            datasets: [{
+                label: 'Nombre de films',
+                data: genresData.slice(0, 10).map(d => d.value),
+                backgroundColor: 'rgba(79, 70, 229, 0.7)',
+                borderColor: 'rgba(79, 70, 229, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.1)' }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+
+// Graphique des décennies
+if (decadesData.length > 0) {
+    new Chart(document.getElementById('decadesChart'), {
+        type: 'line',
+        data: {
+            labels: decadesData.map(d => d.label),
+            datasets: [{
+                label: 'Nombre de films',
+                data: decadesData.map(d => d.value),
+                fill: true,
+                backgroundColor: 'rgba(124, 58, 237, 0.2)',
+                borderColor: 'rgba(124, 58, 237, 1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(0,0,0,0.1)' }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}
