@@ -1,0 +1,3 @@
+"""
+CinéExplorer Configuration Package
+"""

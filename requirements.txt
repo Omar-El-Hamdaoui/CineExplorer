@@ -1,0 +1,16 @@
+# CinéExplorer - Requirements
+# Phase 3: Django + SQLite + MongoDB Replica Set
+
+# Django Framework
+Django>=5.0
+
+# MongoDB
+pymongo>=4.0
+
+# Data Analysis (Phase 1 - Exploration)
+pandas>=2.0
+matplotlib>=3.7
+jupyter>=1.0
+
+# Utilities
+python-dotenv>=1.0
