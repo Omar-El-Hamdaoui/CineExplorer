@@ -1,0 +1,173 @@
+{% extends 'movies/base.html' %}
+
+{% block title %}Recherche - CinéExplorer{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-3">
+            <i class="bi bi-search text-primary"></i> Recherche
+        </h1>
+    </div>
+</div>
+
+<!-- Formulaire de recherche -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" action="{% url 'movies:search' %}">
+            <div class="row g-3">
+                <div class="col-md-8">
+                    <div class="input-group input-group-lg">
+                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                        <input type="text" name="q" class="form-control" 
+                               placeholder="Rechercher un film ou une personne..." 
+                               value="{{ query }}" autofocus>
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <select name="type" class="form-select form-select-lg">
+                        <option value="all" {% if search_type == 'all' %}selected{% endif %}>Tout</option>
+                        <option value="movies" {% if search_type == 'movies' %}selected{% endif %}>Films</option>
+                        <option value="persons" {% if search_type == 'persons' %}selected{% endif %}>Personnes</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                        <i class="bi bi-search"></i> Rechercher
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+{% if query %}
+<!-- Résultats -->
+<div class="row">
+    
+    <!-- Films trouvés -->
+    {% if search_type == 'all' or search_type == 'movies' %}
+    <div class="{% if search_type == 'all' %}col-lg-6{% else %}col-12{% endif %} mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-film text-primary"></i> Films
+                </h5>
+                <span class="badge bg-primary">{{ movies_results|length }} résultat(s)</span>
+            </div>
+            <div class="card-body">
+                {% if movies_results %}
+                <div class="list-group list-group-flush">
+                    {% for movie in movies_results %}
+                    <a href="{% url 'movies:movie_detail' movie.id %}" class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ movie.title }}</h6>
+                            {% if movie.rating and movie.rating.average %}
+                            <span class="badge bg-warning text-dark">
+                                <i class="bi bi-star-fill"></i> {{ movie.rating.average|floatformat:1 }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <small class="text-muted">
+                            {{ movie.year|default:"-" }}
+                            {% if movie.genres %}
+                            - {{ movie.genres|slice:":3"|join:", " }}
+                            {% endif %}
+                        </small>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">
+                    <i class="bi bi-inbox"></i> Aucun film trouvé
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    <!-- Personnes trouvées -->
+    {% if search_type == 'all' or search_type == 'persons' %}
+    <div class="{% if search_type == 'all' %}col-lg-6{% else %}col-12{% endif %} mb-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-people text-success"></i> Personnes
+                </h5>
+                <span class="badge bg-success">{{ persons_results|length }} résultat(s)</span>
+            </div>
+            <div class="card-body">
+                {% if persons_results %}
+                <div class="list-group list-group-flush">
+                    {% for person in persons_results %}
+                    <div class="list-group-item">
+                        <div class="d-flex align-items-center">
+                            <div class="rounded-circle bg-secondary text-white d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px;">
+                                <i class="bi bi-person"></i>
+                            </div>
+                            <div>
+                                <h6 class="mb-0">{{ person.name }}</h6>
+                                <small class="text-muted">
+                                    {% if person.birth_year %}
+                                    Né(e) en {{ person.birth_year }}
+                                    {% endif %}
+                                    {% if person.death_year %}
+                                    - Décédé(e) en {{ person.death_year }}
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">
+                    <i class="bi bi-inbox"></i> Aucune personne trouvée
+                </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+</div>
+
+{% else %}
+<!-- État initial - pas de recherche -->
+<div class="text-center py-5">
+    <i class="bi bi-search display-1 text-muted"></i>
+    <h4 class="mt-3 text-muted">Entrez un terme de recherche</h4>
+    <p class="text-muted">
+        Recherchez par titre de film, nom d'acteur, de réalisateur...
+    </p>
+</div>
+
+<!-- Suggestions de recherche -->
+<div class="row mt-4">
+    <div class="col-md-6 offset-md-3">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-lightbulb text-warning"></i> Suggestions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="?q=Godfather&type=movies" class="btn btn-outline-primary btn-sm">The Godfather</a>
+                    <a href="?q=Spielberg&type=persons" class="btn btn-outline-success btn-sm">Spielberg</a>
+                    <a href="?q=Dark Knight&type=movies" class="btn btn-outline-primary btn-sm">Dark Knight</a>
+                    <a href="?q=Tom Hanks&type=persons" class="btn btn-outline-success btn-sm">Tom Hanks</a>
+                    <a href="?q=Inception&type=movies" class="btn btn-outline-primary btn-sm">Inception</a>
+                    <a href="?q=Tarantino&type=persons" class="btn btn-outline-success btn-sm">Tarantino</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

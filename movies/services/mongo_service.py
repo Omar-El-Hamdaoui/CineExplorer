@@ -3,375 +3,447 @@
 ║                                                                                ║
 ║     🎬 CINEEXPLORER - MongoDB Service                                         ║
 ║                                                                                ║
-║     Service d'accès à MongoDB Replica Set (Phase 2 & 3)                       ║
+║     Phase 4: Service d'accès MongoDB avec Replica Set                         ║
+║     Note: Renomme _id en id pour compatibilité Django templates               ║
 ║                                                                                ║
 ╚════════════════════════════════════════════════════════════════════════════════╝
 """
 
-from typing import Dict, List, Optional, Any
 from django.conf import settings
+from pymongo import MongoClient
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+import logging
 
-try:
-    from pymongo import MongoClient
-    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-    PYMONGO_AVAILABLE = True
-except ImportError:
-    PYMONGO_AVAILABLE = False
+logger = logging.getLogger(__name__)
+
+
+def fix_id(doc):
+    """Renomme _id en id pour compatibilité Django templates"""
+    if doc and '_id' in doc:
+        doc['id'] = doc.pop('_id')
+    return doc
+
+
+def fix_ids(docs):
+    """Renomme _id en id pour une liste de documents"""
+    return [fix_id(doc) for doc in docs]
 
 
 class MongoDBService:
-    """Service pour les requêtes MongoDB (Replica Set)"""
+    """
+    Service Singleton pour l'accès à MongoDB
+    Gère la connexion au Replica Set et fournit les méthodes d'accès aux données
+    """
     
     _instance = None
     _client = None
+    _db = None
     
     def __new__(cls):
-        """Singleton pattern pour réutiliser la connexion"""
         if cls._instance is None:
             cls._instance = super().__new__(cls)
+            cls._instance._initialize()
         return cls._instance
     
-    def __init__(self):
-        if not PYMONGO_AVAILABLE:
-            raise ImportError("PyMongo n'est pas installé. Lancez: pip install pymongo")
-        
-        self.config = settings.MONGODB_CONFIG
-        self._ensure_connection()
-    
-    def _ensure_connection(self):
-        """Assure qu'une connexion est établie"""
-        if self._client is None:
-            try:
-                self._client = MongoClient(
-                    self.config['URI'],
-                    **self.config.get('OPTIONS', {})
-                )
-                # Test de connexion
-                self._client.admin.command('ping')
-            except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-                self._client = None
-                raise ConnectionError(f"Impossible de se connecter à MongoDB: {e}")
+    def _initialize(self):
+        """Initialise la connexion MongoDB"""
+        try:
+            mongo_config = settings.MONGODB_CONFIG
+            self._client = MongoClient(
+                mongo_config['URI'],
+                **mongo_config.get('OPTIONS', {})
+            )
+            self._db = self._client[mongo_config['DATABASE_STRUCTURED']]
+            logger.info("MongoDB connection initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize MongoDB connection: {e}")
+            self._client = None
+            self._db = None
     
     @property
-    def client(self) -> MongoClient:
-        """Retourne le client MongoDB"""
-        self._ensure_connection()
+    def client(self):
         return self._client
     
     @property
     def db(self):
-        """Retourne la base de données principale"""
-        return self.client[self.config['DATABASE_FLAT']]
+        return self._db
     
-    def get_collection(self, name: str):
-        """Retourne une collection par son nom"""
-        collection_name = self.config['COLLECTIONS'].get(name, name)
-        return self.db[collection_name]
-    
-    # =========================================================================
-    # STATUS & HEALTH
-    # =========================================================================
-    
-    def get_replica_status(self) -> Dict:
-        """Récupère le statut du Replica Set"""
-        try:
-            status = self.client.admin.command('replSetGetStatus')
-            return {
-                'set': status.get('set'),
-                'members': [
-                    {
-                        'name': m.get('name'),
-                        'state': m.get('stateStr'),
-                        'health': m.get('health')
-                    }
-                    for m in status.get('members', [])
-                ]
-            }
-        except Exception as e:
-            return {'error': str(e)}
-    
-    def is_connected(self) -> bool:
+    def is_connected(self):
         """Vérifie si la connexion est active"""
         try:
-            self.client.admin.command('ping')
-            return True
-        except:
-            return False
+            if self._client:
+                self._client.admin.command('ping')
+                return True
+        except (ConnectionFailure, ServerSelectionTimeoutError):
+            pass
+        return False
     
-    def get_stats(self) -> Dict[str, Any]:
-        """Récupère les statistiques de la base MongoDB"""
-        stats = {}
-        
+    def get_replica_status(self):
+        """Retourne le statut du Replica Set"""
         try:
-            # Stats de la base
-            db_stats = self.db.command('dbStats')
-            stats['data_size_mb'] = round(db_stats.get('dataSize', 0) / 1024 / 1024, 2)
-            stats['storage_size_mb'] = round(db_stats.get('storageSize', 0) / 1024 / 1024, 2)
-            stats['collections_count'] = db_stats.get('collections', 0)
-            
-            # Comptages des collections principales
-            stats['movies_count'] = self.db.movies.count_documents({})
-            stats['movies_complete_count'] = self.db.movies_complete.count_documents({})
-            stats['persons_count'] = self.db.persons.count_documents({})
-            
+            status = self._client.admin.command('replSetGetStatus')
+            members = []
+            for member in status.get('members', []):
+                state_map = {
+                    0: 'STARTUP', 1: 'PRIMARY', 2: 'SECONDARY',
+                    3: 'RECOVERING', 7: 'ARBITER', 8: 'DOWN'
+                }
+                members.append({
+                    'name': member.get('name'),
+                    'state': state_map.get(member.get('state'), 'UNKNOWN'),
+                    'health': member.get('health', 0)
+                })
+            return {
+                'set': status.get('set'),
+                'members': members
+            }
         except Exception as e:
-            stats['error'] = str(e)
-        
-        return stats
+            logger.error(f"Error getting replica status: {e}")
+            return {'set': None, 'members': []}
+    
+    def get_stats(self):
+        """Retourne les statistiques de la base de données"""
+        try:
+            stats = self._db.command('dbStats')
+            return {
+                'data_size_mb': round(stats.get('dataSize', 0) / (1024 * 1024), 2),
+                'storage_size_mb': round(stats.get('storageSize', 0) / (1024 * 1024), 2),
+                'collections_count': stats.get('collections', 0),
+                'movies_count': self._db.movies.count_documents({}),
+                'movies_complete_count': self._db.movies_complete.count_documents({}),
+                'persons_count': self._db.persons.count_documents({})
+            }
+        except Exception as e:
+            logger.error(f"Error getting stats: {e}")
+            return {}
     
     # =========================================================================
-    # FILMS (Collection movies_complete - documents structurés)
+    # FILMS - Collection movies_complete
     # =========================================================================
     
-    def get_movie_complete(self, movie_id: str) -> Optional[Dict]:
-        """
-        Récupère un film complet depuis la collection movies_complete
-        (Document dénormalisé avec genres, cast, directors, etc.)
-        """
-        return self.db.movies_complete.find_one({'_id': movie_id})
+    def get_movie_complete(self, movie_id):
+        """Récupère un film complet par son ID"""
+        try:
+            movie = self._db.movies_complete.find_one({'_id': movie_id})
+            return fix_id(movie)
+        except Exception as e:
+            logger.error(f"Error getting movie {movie_id}: {e}")
+            return None
     
-    def get_movies_complete(self, limit: int = 20, skip: int = 0,
-                           genre: str = None, year_min: int = None, 
-                           year_max: int = None, min_rating: float = None,
-                           sort_by: str = 'title', sort_order: int = 1) -> List[Dict]:
-        """
-        Récupère une liste de films complets avec filtres
-        """
-        # Construction du filtre
-        query = {}
-        
-        if genre:
-            query['genres'] = genre
-        
-        if year_min or year_max:
-            query['year'] = {}
+    def get_movies_complete(self, limit=20, skip=0, genre=None, year_min=None, 
+                           year_max=None, min_rating=None, sort_by='title', sort_order=1):
+        """Récupère une liste de films avec filtres"""
+        try:
+            query = {}
+            
+            if genre:
+                query['genres'] = genre
+            
+            if year_min or year_max:
+                query['year'] = {}
+                if year_min:
+                    query['year']['$gte'] = year_min
+                if year_max:
+                    query['year']['$lte'] = year_max
+                if not query['year']:
+                    del query['year']
+            
+            if min_rating:
+                query['rating.average'] = {'$gte': min_rating}
+            
+            # Mapping du tri
+            sort_field_map = {
+                'title': 'title',
+                'year': 'year',
+                'rating': 'rating.average',
+                'votes': 'rating.votes'
+            }
+            sort_field = sort_field_map.get(sort_by, 'title')
+            
+            cursor = self._db.movies_complete.find(query)\
+                .sort(sort_field, sort_order)\
+                .skip(skip)\
+                .limit(limit)
+            
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error getting movies: {e}")
+            return []
+    
+    def count_movies_complete(self, genre=None, year_min=None, year_max=None, min_rating=None):
+        """Compte le nombre de films avec filtres"""
+        try:
+            query = {}
+            
+            if genre:
+                query['genres'] = genre
             if year_min:
+                query['year'] = query.get('year', {})
                 query['year']['$gte'] = year_min
             if year_max:
+                query['year'] = query.get('year', {})
                 query['year']['$lte'] = year_max
-            if not query['year']:
-                del query['year']
-        
-        if min_rating:
-            query['rating.average'] = {'$gte': min_rating}
-        
-        # Mapping des champs de tri
-        sort_mapping = {
-            'title': 'title',
-            'year': 'year',
-            'rating': 'rating.average',
-            'votes': 'rating.votes'
-        }
-        sort_field = sort_mapping.get(sort_by, 'title')
-        
-        # Exécution de la requête
-        cursor = self.db.movies_complete.find(query) \
-            .sort(sort_field, sort_order) \
-            .skip(skip) \
-            .limit(limit)
-        
-        return list(cursor)
+            if min_rating:
+                query['rating.average'] = {'$gte': min_rating}
+            
+            return self._db.movies_complete.count_documents(query)
+        except Exception as e:
+            logger.error(f"Error counting movies: {e}")
+            return 0
     
-    def count_movies_complete(self, genre: str = None, year_min: int = None,
-                              year_max: int = None, min_rating: float = None) -> int:
-        """Compte les films avec les filtres appliqués"""
-        query = {}
-        
-        if genre:
-            query['genres'] = genre
-        
-        if year_min or year_max:
-            query['year'] = {}
-            if year_min:
-                query['year']['$gte'] = year_min
-            if year_max:
-                query['year']['$lte'] = year_max
-        
-        if min_rating:
-            query['rating.average'] = {'$gte': min_rating}
-        
-        return self.db.movies_complete.count_documents(query)
+    def get_top_movies(self, limit=10, min_votes=10000):
+        """Récupère les meilleurs films"""
+        try:
+            cursor = self._db.movies_complete.find({
+                'rating.votes': {'$gte': min_votes}
+            }).sort('rating.average', -1).limit(limit)
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error getting top movies: {e}")
+            return []
     
-    def get_top_movies(self, limit: int = 10, min_votes: int = 10000) -> List[Dict]:
-        """Récupère les meilleurs films par note"""
-        return list(self.db.movies_complete.find(
-            {'rating.votes': {'$gte': min_votes}}
-        ).sort('rating.average', -1).limit(limit))
+    def search_movies(self, query, limit=20):
+        """Recherche de films par titre"""
+        try:
+            cursor = self._db.movies_complete.find({
+                'title': {'$regex': query, '$options': 'i'}
+            }).limit(limit)
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error searching movies: {e}")
+            return []
     
-    def search_movies(self, query: str, limit: int = 20) -> List[Dict]:
-        """Recherche des films par titre"""
-        # Recherche par regex (case-insensitive)
-        return list(self.db.movies_complete.find(
-            {'title': {'$regex': query, '$options': 'i'}}
-        ).sort('rating.votes', -1).limit(limit))
+    def get_similar_movies(self, movie_id, limit=6):
+        """Récupère des films similaires basés sur le genre"""
+        try:
+            movie = self._db.movies_complete.find_one({'_id': movie_id})
+            if not movie or 'genres' not in movie or not movie['genres']:
+                return []
+            
+            cursor = self._db.movies_complete.find({
+                '_id': {'$ne': movie_id},
+                'genres': {'$in': movie['genres']},
+                'rating.votes': {'$gte': 10000}
+            }).sort('rating.average', -1).limit(limit)
+            
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error getting similar movies: {e}")
+            return []
     
     # =========================================================================
     # GENRES
     # =========================================================================
     
-    def get_all_genres(self) -> List[str]:
+    def get_all_genres(self):
         """Récupère tous les genres distincts"""
-        return self.db.movies_complete.distinct('genres')
+        try:
+            return self._db.movies_complete.distinct('genres')
+        except Exception as e:
+            logger.error(f"Error getting genres: {e}")
+            return []
     
-    def get_genres_stats(self) -> List[Dict]:
-        """Statistiques par genre avec pipeline d'agrégation"""
-        pipeline = [
-            {'$unwind': '$genres'},
-            {'$group': {
-                '_id': '$genres',
-                'count': {'$sum': 1},
-                'avg_rating': {'$avg': '$rating.average'}
-            }},
-            {'$sort': {'count': -1}}
-        ]
-        
-        return list(self.db.movies_complete.aggregate(pipeline))
+    def get_genres_stats(self):
+        """Récupère les statistiques par genre"""
+        try:
+            pipeline = [
+                {'$unwind': '$genres'},
+                {'$group': {
+                    '_id': '$genres',
+                    'count': {'$sum': 1},
+                    'avg_rating': {'$avg': '$rating.average'}
+                }},
+                {'$sort': {'count': -1}},
+                {'$project': {
+                    'genre': '$_id',
+                    'count': 1,
+                    'avg_rating': {'$round': ['$avg_rating', 2]},
+                    '_id': 0
+                }}
+            ]
+            return list(self._db.movies_complete.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error getting genres stats: {e}")
+            return []
     
     # =========================================================================
     # PERSONNES
     # =========================================================================
     
-    def get_person(self, person_id: str) -> Optional[Dict]:
+    def get_person(self, person_id):
         """Récupère une personne par son ID"""
-        return self.db.persons.find_one({'person_id': person_id})
+        try:
+            person = self._db.persons.find_one({'_id': person_id})
+            return fix_id(person)
+        except Exception as e:
+            logger.error(f"Error getting person {person_id}: {e}")
+            return None
     
-    def search_persons(self, name: str, limit: int = 20) -> List[Dict]:
-        """Recherche des personnes par nom"""
-        return list(self.db.persons.find(
-            {'name': {'$regex': name, '$options': 'i'}}
-        ).limit(limit))
-    
-    def get_actor_filmography(self, actor_name: str) -> List[Dict]:
-        """Récupère la filmographie d'un acteur"""
-        # Recherche dans movies_complete où l'acteur est dans le cast
-        return list(self.db.movies_complete.find(
-            {'cast.name': {'$regex': actor_name, '$options': 'i'}},
-            {'title': 1, 'year': 1, 'rating': 1, 'cast.$': 1}
-        ).sort('year', -1))
-    
-    # =========================================================================
-    # STATISTIQUES AVANCÉES (Agrégation Pipeline)
-    # =========================================================================
-    
-    def get_movies_by_decade(self) -> List[Dict]:
-        """Statistiques par décennie"""
-        pipeline = [
-            {'$match': {'year': {'$ne': None}}},
-            {'$group': {
-                '_id': {'$multiply': [{'$floor': {'$divide': ['$year', 10]}}, 10]},
-                'count': {'$sum': 1},
-                'avg_rating': {'$avg': '$rating.average'}
-            }},
-            {'$sort': {'_id': 1}}
-        ]
-        
-        result = list(self.db.movies_complete.aggregate(pipeline))
-        return [{'decade': r['_id'], 'count': r['count'], 'avg_rating': r['avg_rating']} for r in result]
-    
-    def get_rating_distribution(self) -> List[Dict]:
-        """Distribution des notes"""
-        pipeline = [
-            {'$match': {'rating.average': {'$ne': None}}},
-            {'$group': {
-                '_id': {'$round': ['$rating.average', 0]},
-                'count': {'$sum': 1}
-            }},
-            {'$sort': {'_id': 1}}
-        ]
-        
-        result = list(self.db.movies_complete.aggregate(pipeline))
-        return [{'rating': r['_id'], 'count': r['count']} for r in result]
-
-    def get_top_directors(self, limit: int = 10) -> List[Dict]:
-        """Top réalisateurs par nombre de films"""
-        pipeline = [
-            {'$unwind': '$directors'},
-            {'$group': {
-                '_id': '$directors.name',
-                'movie_count': {'$sum': 1},
-                'avg_rating': {'$avg': '$rating.average'}
-            }},
-            {'$sort': {'movie_count': -1}},
-            {'$limit': limit},
-            {'$project': {
-                'name': '$_id',
-                'movie_count': 1,
-                'avg_rating': 1,
-                '_id': 0
-            }}
-        ]
-
-        return list(self.db.movies_complete.aggregate(pipeline))
-    
-    def get_top_actors(self, limit: int = 10) -> List[Dict]:
-        """Top acteurs par nombre de films"""
-        pipeline = [
-            {'$unwind': '$cast'},
-            {'$group': {
-                '_id': '$cast.name',
-                'movie_count': {'$sum': 1},
-                'avg_rating': {'$avg': '$rating.average'}
-            }},
-            {'$sort': {'movie_count': -1}},
-            {'$limit': limit}
-        ]
-        
-        return list(self.db.movies_complete.aggregate(pipeline))
-    
-    # =========================================================================
-    # REQUÊTES SPÉCIFIQUES (Phase 2 - Équivalentes SQL)
-    # =========================================================================
-    
-    def get_top_n_movies_by_genre(self, genre: str, year_start: int, 
-                                   year_end: int, n: int = 10) -> List[Dict]:
-        """
-        Q2: Top N films d'un genre sur une période
-        """
-        return list(self.db.movies_complete.find({
-            'genres': genre,
-            'year': {'$gte': year_start, '$lte': year_end}
-        }).sort('rating.average', -1).limit(n))
-    
-    def get_popular_genres(self, min_rating: float = 7.0, 
-                           min_movies: int = 50) -> List[Dict]:
-        """
-        Q5: Genres populaires (note moyenne > seuil, plus de N films)
-        """
-        pipeline = [
-            {'$unwind': '$genres'},
-            {'$group': {
-                '_id': '$genres',
-                'count': {'$sum': 1},
-                'avg_rating': {'$avg': '$rating.average'}
-            }},
-            {'$match': {
-                'avg_rating': {'$gt': min_rating},
-                'count': {'$gt': min_movies}
-            }},
-            {'$sort': {'avg_rating': -1}}
-        ]
-        
-        return list(self.db.movies_complete.aggregate(pipeline))
-    
-    def get_similar_movies(self, movie_id: str, limit: int = 5) -> List[Dict]:
-        """Récupère des films similaires (même genre ou réalisateur)"""
-        movie = self.get_movie_complete(movie_id)
-        if not movie:
+    def search_persons(self, query, limit=20):
+        """Recherche de personnes par nom"""
+        try:
+            cursor = self._db.persons.find({
+                'name': {'$regex': query, '$options': 'i'}
+            }).limit(limit)
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error searching persons: {e}")
             return []
-        
-        genres = movie.get('genres', [])
-        
-        return list(self.db.movies_complete.find({
-            '_id': {'$ne': movie_id},
-            'genres': {'$in': genres}
-        }).sort('rating.average', -1).limit(limit))
     
-    def close(self):
-        """Ferme la connexion"""
-        if self._client:
-            self._client.close()
-            self._client = None
+    def get_actor_filmography(self, actor_name, limit=50):
+        """Récupère la filmographie d'un acteur"""
+        try:
+            cursor = self._db.movies_complete.find({
+                'cast.name': {'$regex': actor_name, '$options': 'i'}
+            }).sort('year', -1).limit(limit)
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error getting filmography: {e}")
+            return []
+    
+    # =========================================================================
+    # STATISTIQUES AVANCÉES
+    # =========================================================================
+    
+    def get_movies_by_decade(self):
+        """Récupère le nombre de films par décennie"""
+        try:
+            pipeline = [
+                {'$match': {'year': {'$exists': True, '$ne': None}}},
+                {'$group': {
+                    '_id': {'$multiply': [{'$floor': {'$divide': ['$year', 10]}}, 10]},
+                    'count': {'$sum': 1}
+                }},
+                {'$sort': {'_id': 1}},
+                {'$project': {
+                    'decade': '$_id',
+                    'count': 1,
+                    '_id': 0
+                }}
+            ]
+            return list(self._db.movies_complete.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error getting movies by decade: {e}")
+            return []
+    
+    def get_rating_distribution(self):
+        """Récupère la distribution des notes"""
+        try:
+            pipeline = [
+                {'$match': {'rating.average': {'$exists': True}}},
+                {'$group': {
+                    '_id': {'$round': ['$rating.average', 0]},
+                    'count': {'$sum': 1}
+                }},
+                {'$sort': {'_id': 1}},
+                {'$project': {
+                    'rating': '$_id',
+                    'count': 1,
+                    '_id': 0
+                }}
+            ]
+            return list(self._db.movies_complete.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error getting rating distribution: {e}")
+            return []
+    
+    def get_top_directors(self, limit=10):
+        """Récupère les réalisateurs les plus prolifiques"""
+        try:
+            pipeline = [
+                {'$unwind': '$directors'},
+                {'$group': {
+                    '_id': '$directors.name',
+                    'movie_count': {'$sum': 1},
+                    'avg_rating': {'$avg': '$rating.average'}
+                }},
+                {'$match': {'movie_count': {'$gte': 3}}},
+                {'$sort': {'movie_count': -1}},
+                {'$limit': limit},
+                {'$project': {
+                    'name': '$_id',
+                    'movie_count': 1,
+                    'avg_rating': {'$round': ['$avg_rating', 2]},
+                    '_id': 0
+                }}
+            ]
+            return list(self._db.movies_complete.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error getting top directors: {e}")
+            return []
+    
+    def get_top_actors(self, limit=10):
+        """Récupère les acteurs les plus prolifiques"""
+        try:
+            pipeline = [
+                {'$unwind': '$cast'},
+                {'$group': {
+                    '_id': '$cast.name',
+                    'movie_count': {'$sum': 1},
+                    'avg_rating': {'$avg': '$rating.average'}
+                }},
+                {'$match': {'movie_count': {'$gte': 5}}},
+                {'$sort': {'movie_count': -1}},
+                {'$limit': limit},
+                {'$project': {
+                    'name': '$_id',
+                    'movie_count': 1,
+                    'avg_rating': {'$round': ['$avg_rating', 2]},
+                    '_id': 0
+                }}
+            ]
+            return list(self._db.movies_complete.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error getting top actors: {e}")
+            return []
+    
+    def get_top_n_movies_by_genre(self, genre, year_min=None, year_max=None, n=10):
+        """Récupère les N meilleurs films d'un genre"""
+        try:
+            query = {'genres': genre}
+            if year_min or year_max:
+                query['year'] = {}
+                if year_min:
+                    query['year']['$gte'] = year_min
+                if year_max:
+                    query['year']['$lte'] = year_max
+            
+            cursor = self._db.movies_complete.find(query)\
+                .sort('rating.average', -1)\
+                .limit(n)
+            
+            return fix_ids(list(cursor))
+        except Exception as e:
+            logger.error(f"Error getting top movies by genre: {e}")
+            return []
+    
+    def get_popular_genres(self, min_rating=7.0, min_count=50):
+        """Récupère les genres populaires"""
+        try:
+            pipeline = [
+                {'$unwind': '$genres'},
+                {'$group': {
+                    '_id': '$genres',
+                    'count': {'$sum': 1},
+                    'avg_rating': {'$avg': '$rating.average'}
+                }},
+                {'$match': {
+                    'avg_rating': {'$gte': min_rating},
+                    'count': {'$gte': min_count}
+                }},
+                {'$sort': {'avg_rating': -1}},
+                {'$project': {
+                    'genre': '$_id',
+                    'count': 1,
+                    'avg_rating': {'$round': ['$avg_rating', 2]},
+                    '_id': 0
+                }}
+            ]
+            return list(self._db.movies_complete.aggregate(pipeline))
+        except Exception as e:
+            logger.error(f"Error getting popular genres: {e}")
+            return []
 
 
-# Instance singleton pour faciliter l'import
+# Instance singleton pour utilisation globale
 mongo_service = MongoDBService()

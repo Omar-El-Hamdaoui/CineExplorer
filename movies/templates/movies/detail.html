@@ -1,0 +1,263 @@
+{% extends 'movies/base.html' %}
+
+{% block title %}{{ movie.title|default:"Film" }} - CinéExplorer{% endblock %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-danger">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+<a href="{% url 'movies:movies_list' %}" class="btn btn-primary">
+    <i class="bi bi-arrow-left"></i> Retour à la liste
+</a>
+{% else %}
+
+<!-- Breadcrumb -->
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{% url 'movies:home' %}">Accueil</a></li>
+        <li class="breadcrumb-item"><a href="{% url 'movies:movies_list' %}">Films</a></li>
+        <li class="breadcrumb-item active">{{ movie.title|truncatechars:30 }}</li>
+    </ol>
+</nav>
+
+<!-- En-tête du film -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-8">
+                <h1 class="card-title mb-3">
+                    {{ movie.title }}
+                </h1>
+                
+                <div class="mb-3">
+                    {% if movie.year %}
+                    <span class="badge bg-primary me-2">
+                        <i class="bi bi-calendar"></i> {{ movie.year }}
+                    </span>
+                    {% endif %}
+                    
+                    {% if movie.runtime %}
+                    <span class="badge bg-secondary me-2">
+                        <i class="bi bi-clock"></i> {{ movie.runtime }} min
+                    </span>
+                    {% endif %}
+                    
+                    {% if movie.type %}
+                    <span class="badge bg-info me-2">
+                        {{ movie.type }}
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <!-- Genres -->
+                <div class="mb-3">
+                    {% for genre in movie.genres %}
+                    <span class="badge bg-outline-secondary border me-1">{{ genre }}</span>
+                    {% empty %}
+                    <span class="text-muted">Aucun genre</span>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="col-md-4 text-md-end">
+                {% if movie.rating and movie.rating.average %}
+                <div class="rating-box p-3 rounded" style="background-color: #fff3cd;">
+                    <div class="display-4 text-warning mb-1">
+                        <i class="bi bi-star-fill"></i> {{ movie.rating.average|floatformat:1 }}
+                    </div>
+                    <div class="text-muted">
+                        {{ movie.rating.votes|floatformat:0 }} votes
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Colonne principale -->
+    <div class="col-lg-8">
+        
+        <!-- Réalisateurs -->
+        {% if movie.directors %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-camera-reels text-primary"></i> Réalisateur(s)</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for director in movie.directors %}
+                    <div class="col-md-6 mb-2">
+                        <div class="d-flex align-items-center">
+                            <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style="width: 45px; height: 45px;">
+                                <i class="bi bi-person"></i>
+                            </div>
+                            <div>
+                                <strong>{{ director.name }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Casting -->
+        {% if movie.cast %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-people text-primary"></i> Casting</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Acteur</th>
+                                <th>Personnage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for actor in movie.cast|slice:":10" %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td><strong>{{ actor.name }}</strong></td>
+                                <td>
+                                    {% if actor.characters %}
+                                        {% for char in actor.characters %}
+                                        <span class="badge bg-light text-dark">{{ char }}</span>
+                                        {% endfor %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if movie.cast|length > 10 %}
+                <p class="text-muted text-center mb-0">
+                    <small>+ {{ movie.cast|length|add:"-10" }} autres acteurs</small>
+                </p>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Scénaristes -->
+        {% if movie.writers %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-pen text-primary"></i> Scénariste(s)</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    {% for writer in movie.writers %}
+                    <li class="mb-2">
+                        <i class="bi bi-person text-muted"></i> {{ writer.name }}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        
+    </div>
+    
+    <!-- Colonne latérale -->
+    <div class="col-lg-4">
+        
+        <!-- Titres alternatifs -->
+        {% if movie.titles %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-translate text-primary"></i> Titres alternatifs</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {% for title in movie.titles|slice:":8" %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        {{ title.title|truncatechars:30 }}
+                        {% if title.region %}
+                        <span class="badge bg-secondary">{{ title.region }}</span>
+                        {% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Films similaires -->
+        {% if similar_movies %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-collection text-primary"></i> Films similaires</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-group list-group-flush">
+                    {% for similar in similar_movies %}
+                    <li class="list-group-item">
+                        <a href="{% url 'movies:movie_detail' similar.id %}" class="text-decoration-none">
+                            <strong>{{ similar.title|truncatechars:30 }}</strong>
+                        </a>
+                        <br>
+                        <small class="text-muted">
+                            {{ similar.year|default:"-" }}
+                            {% if similar.rating and similar.rating.average %}
+                            - <i class="bi bi-star-fill text-warning"></i> {{ similar.rating.average|floatformat:1 }}
+                            {% endif %}
+                        </small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Infos techniques -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle text-primary"></i> Informations</h5>
+            </div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2">
+                        <strong>ID IMDB:</strong> {{ movie.id }}
+                    </li>
+                    {% if movie.year %}
+                    <li class="mb-2">
+                        <strong>Année:</strong> {{ movie.year }}
+                    </li>
+                    {% endif %}
+                    {% if movie.runtime %}
+                    <li class="mb-2">
+                        <strong>Durée:</strong> {{ movie.runtime }} minutes
+                    </li>
+                    {% endif %}
+                    {% if movie.genres %}
+                    <li class="mb-2">
+                        <strong>Genres:</strong> {{ movie.genres|join:", " }}
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+        
+    </div>
+</div>
+
+<!-- Bouton retour -->
+<div class="mt-4">
+    <a href="{% url 'movies:movies_list' %}" class="btn btn-outline-primary">
+        <i class="bi bi-arrow-left"></i> Retour à la liste
+    </a>
+</div>
+
+{% endif %}
+{% endblock %}

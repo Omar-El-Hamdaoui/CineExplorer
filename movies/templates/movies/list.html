@@ -1,0 +1,220 @@
+{% extends 'movies/base.html' %}
+
+{% block title %}CinéExplorer - Films{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h1 class="mb-3">
+            <i class="bi bi-collection-play text-primary"></i> Liste des Films
+        </h1>
+        <p class="text-muted">
+            {{ total_count }} films trouvés
+        </p>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="bi bi-funnel text-primary"></i> Filtres
+            <button class="btn btn-sm btn-outline-secondary float-end" type="button" data-bs-toggle="collapse" data-bs-target="#filtersCollapse">
+                <i class="bi bi-chevron-down"></i>
+            </button>
+        </h5>
+    </div>
+    <div class="collapse show" id="filtersCollapse">
+        <div class="card-body">
+            <form method="get" action="{% url 'movies:movies_list' %}">
+                <div class="row g-3">
+                    <!-- Genre -->
+                    <div class="col-md-3">
+                        <label for="genre" class="form-label">Genre</label>
+                        <select name="genre" id="genre" class="form-select">
+                            <option value="">Tous les genres</option>
+                            {% for g in all_genres %}
+                            <option value="{{ g }}" {% if current_filters.genre == g %}selected{% endif %}>{{ g }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <!-- Année min -->
+                    <div class="col-md-2">
+                        <label for="year_min" class="form-label">Année min</label>
+                        <input type="number" name="year_min" id="year_min" class="form-control" 
+                               placeholder="1900" min="1900" max="2025" 
+                               value="{{ current_filters.year_min }}">
+                    </div>
+                    
+                    <!-- Année max -->
+                    <div class="col-md-2">
+                        <label for="year_max" class="form-label">Année max</label>
+                        <input type="number" name="year_max" id="year_max" class="form-control" 
+                               placeholder="2025" min="1900" max="2025"
+                               value="{{ current_filters.year_max }}">
+                    </div>
+                    
+                    <!-- Note minimale -->
+                    <div class="col-md-2">
+                        <label for="min_rating" class="form-label">Note min</label>
+                        <select name="min_rating" id="min_rating" class="form-select">
+                            <option value="">Toutes</option>
+                            <option value="9" {% if current_filters.min_rating == 9 %}selected{% endif %}>9+</option>
+                            <option value="8" {% if current_filters.min_rating == 8 %}selected{% endif %}>8+</option>
+                            <option value="7" {% if current_filters.min_rating == 7 %}selected{% endif %}>7+</option>
+                            <option value="6" {% if current_filters.min_rating == 6 %}selected{% endif %}>6+</option>
+                            <option value="5" {% if current_filters.min_rating == 5 %}selected{% endif %}>5+</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Tri -->
+                    <div class="col-md-3">
+                        <label for="sort" class="form-label">Trier par</label>
+                        <div class="input-group">
+                            <select name="sort" id="sort" class="form-select">
+                                <option value="title" {% if current_filters.sort == 'title' %}selected{% endif %}>Titre</option>
+                                <option value="year" {% if current_filters.sort == 'year' %}selected{% endif %}>Année</option>
+                                <option value="rating" {% if current_filters.sort == 'rating' %}selected{% endif %}>Note</option>
+                                <option value="votes" {% if current_filters.sort == 'votes' %}selected{% endif %}>Popularité</option>
+                            </select>
+                            <select name="order" class="form-select" style="max-width: 100px;">
+                                <option value="asc" {% if current_filters.order == 'asc' %}selected{% endif %}>↑ Asc</option>
+                                <option value="desc" {% if current_filters.order == 'desc' %}selected{% endif %}>↓ Desc</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-search"></i> Appliquer
+                        </button>
+                        <a href="{% url 'movies:movies_list' %}" class="btn btn-outline-secondary">
+                            <i class="bi bi-x-circle"></i> Réinitialiser
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Liste des films -->
+{% if error %}
+<div class="alert alert-danger">
+    <i class="bi bi-exclamation-triangle"></i> {{ error }}
+</div>
+{% endif %}
+
+{% if movies %}
+<div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4 mb-4">
+    {% for movie in movies %}
+    <div class="col">
+        <div class="card h-100 movie-card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <a href="{% url 'movies:movie_detail' movie.id %}" class="text-decoration-none text-dark">
+                        {{ movie.title|truncatechars:40 }}
+                    </a>
+                </h5>
+                <p class="card-text text-muted mb-2">
+                    <i class="bi bi-calendar"></i> {{ movie.year|default:"-" }}
+                    {% if movie.runtime %}
+                    <span class="ms-2"><i class="bi bi-clock"></i> {{ movie.runtime }} min</span>
+                    {% endif %}
+                </p>
+                
+                {% if movie.rating and movie.rating.average %}
+                <p class="mb-2">
+                    <span class="badge bg-warning text-dark">
+                        <i class="bi bi-star-fill"></i> {{ movie.rating.average|floatformat:1 }}
+                    </span>
+                    <small class="text-muted">
+                        ({{ movie.rating.votes|floatformat:0 }} votes)
+                    </small>
+                </p>
+                {% endif %}
+                
+                <div class="mb-2">
+                    {% for genre in movie.genres|slice:":3" %}
+                    <span class="badge bg-secondary">{{ genre }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="card-footer bg-transparent">
+                <a href="{% url 'movies:movie_detail' movie.id %}" class="btn btn-sm btn-outline-primary w-100">
+                    <i class="bi bi-eye"></i> Voir détails
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if movies.has_other_pages %}
+<nav aria-label="Pagination des films">
+    <ul class="pagination justify-content-center">
+        {% if movies.has_previous %}
+        <li class="page-item">
+            <a class="page-link" href="?page=1{% if current_filters.genre %}&genre={{ current_filters.genre }}{% endif %}{% if current_filters.year_min %}&year_min={{ current_filters.year_min }}{% endif %}{% if current_filters.year_max %}&year_max={{ current_filters.year_max }}{% endif %}{% if current_filters.min_rating %}&min_rating={{ current_filters.min_rating }}{% endif %}&sort={{ current_filters.sort }}&order={{ current_filters.order }}">
+                <i class="bi bi-chevron-double-left"></i>
+            </a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="?page={{ movies.previous_page_number }}{% if current_filters.genre %}&genre={{ current_filters.genre }}{% endif %}{% if current_filters.year_min %}&year_min={{ current_filters.year_min }}{% endif %}{% if current_filters.year_max %}&year_max={{ current_filters.year_max }}{% endif %}{% if current_filters.min_rating %}&min_rating={{ current_filters.min_rating }}{% endif %}&sort={{ current_filters.sort }}&order={{ current_filters.order }}">
+                <i class="bi bi-chevron-left"></i>
+            </a>
+        </li>
+        {% endif %}
+        
+        {% for num in movies.paginator.page_range %}
+            {% if movies.number == num %}
+            <li class="page-item active">
+                <span class="page-link">{{ num }}</span>
+            </li>
+            {% elif num > movies.number|add:'-3' and num < movies.number|add:'3' %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ num }}{% if current_filters.genre %}&genre={{ current_filters.genre }}{% endif %}{% if current_filters.year_min %}&year_min={{ current_filters.year_min }}{% endif %}{% if current_filters.year_max %}&year_max={{ current_filters.year_max }}{% endif %}{% if current_filters.min_rating %}&min_rating={{ current_filters.min_rating }}{% endif %}&sort={{ current_filters.sort }}&order={{ current_filters.order }}">
+                    {{ num }}
+                </a>
+            </li>
+            {% endif %}
+        {% endfor %}
+        
+        {% if movies.has_next %}
+        <li class="page-item">
+            <a class="page-link" href="?page={{ movies.next_page_number }}{% if current_filters.genre %}&genre={{ current_filters.genre }}{% endif %}{% if current_filters.year_min %}&year_min={{ current_filters.year_min }}{% endif %}{% if current_filters.year_max %}&year_max={{ current_filters.year_max }}{% endif %}{% if current_filters.min_rating %}&min_rating={{ current_filters.min_rating }}{% endif %}&sort={{ current_filters.sort }}&order={{ current_filters.order }}">
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </li>
+        <li class="page-item">
+            <a class="page-link" href="?page={{ movies.paginator.num_pages }}{% if current_filters.genre %}&genre={{ current_filters.genre }}{% endif %}{% if current_filters.year_min %}&year_min={{ current_filters.year_min }}{% endif %}{% if current_filters.year_max %}&year_max={{ current_filters.year_max }}{% endif %}{% if current_filters.min_rating %}&min_rating={{ current_filters.min_rating }}{% endif %}&sort={{ current_filters.sort }}&order={{ current_filters.order }}">
+                <i class="bi bi-chevron-double-right"></i>
+            </a>
+        </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> Aucun film trouvé avec ces critères.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .movie-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .movie-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+</style>
+{% endblock %}
